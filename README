@@ -1,0 +1,214 @@
+# Fletcher Wave Propagation – Multi-Backend HPC Implementation
+
+This project implements seismic wave propagation using the Fletcher method in TTI (Tilted Transverse Isotropy) media.
+The code is designed for **high performance and portability**, supporting multiple parallel programming backends targeting **NVIDIA and AMD GPUs**.
+
+---
+
+## 📋 General Requirements
+
+- **CMake** 3.20+
+- **C++17-compatible compiler**
+- **For NVIDIA GPUs:** CUDA Toolkit (`nvcc`)
+- **For AMD GPUs:** ROCm Toolkit (`hipcc`)
+- External libraries installed according to the selected backend (Kokkos, RAJA, AdaptiveCpp, etc.)
+
+---
+
+## 🏗️ Build Instructions
+
+For any backend, always start by creating a clean build directory:
+
+    rm -rf build && mkdir build && cd build
+
+Choose one of the backends below according to your hardware and programming model.
+
+---
+
+## 1. Native Backends (Maximum Vendor-Specific Performance)
+
+These backends rely on vendor-specific programming models.
+
+### 🟢 CUDA (NVIDIA)
+
+For NVIDIA GPUs (e.g., A100, H100, L40s, RTX series):
+
+    cmake .. \
+        -D BACKEND=CUDA \
+        -D CMAKE_CUDA_ARCHITECTURES=89 \
+        -D CMAKE_BUILD_TYPE=Release
+
+    make -j$(nproc)
+
+**Note:**
+- `89` corresponds to the Ada Lovelace architecture (L40s / RTX 4090)
+- Use `80` for A100
+- Use `70` for V100
+
+---
+
+### 🔴 HIP (AMD)
+
+For AMD GPUs (e.g., MI250X, MI300):
+
+    cmake .. \
+        -D BACKEND=HIP \
+        -D CMAKE_CXX_COMPILER=hipcc \
+        -D CMAKE_HIP_ARCHITECTURES="native" \
+        -D CMAKE_BUILD_TYPE=Release
+
+    make -j$(nproc)
+
+---
+
+## 2. Performance Portability Backends (Kokkos, SYCL, RAJA)
+
+These backends allow the same source code to run on NVIDIA (CUDA) or AMD (HIP/ROCm) GPUs.
+
+---
+
+### 📦 Kokkos
+
+A widely used performance portability abstraction, common in national laboratories.
+
+#### Option A: NVIDIA GPUs
+
+    cmake .. \
+        -D BACKEND=KOKKOS \
+        -D Kokkos_ENABLE_CUDA=ON \
+        -D Kokkos_ARCH_ADA89=ON \
+        -D Kokkos_ENABLE_CUDA_LAMBDA=ON \
+        -D CMAKE_BUILD_TYPE=Release
+
+    make -j$(nproc)
+
+#### Option B: AMD GPUs
+
+    cmake .. \
+        -D BACKEND=KOKKOS \
+        -D CMAKE_CXX_COMPILER=hipcc \
+        -D Kokkos_ENABLE_HIP=ON \
+        -D Kokkos_ARCH_VEGA90A=ON \
+        -D CMAKE_BUILD_TYPE=Release
+
+    make -j$(nproc)
+
+---
+
+### 🌀 SYCL (via AdaptiveCpp)
+
+An open standard. The main difference lies in the `ACPP_TARGETS` environment variable.
+
+#### Option A: NVIDIA GPUs
+
+    export ACPP_TARGETS="cuda:sm_89"
+
+    cmake .. \
+        -D BACKEND=SYCL \
+        -D CMAKE_CXX_COMPILER=/opt/adaptivecpp/bin/acpp \
+        -D CMAKE_BUILD_TYPE=Release
+
+    make -j$(nproc)
+
+#### Option B: AMD GPUs
+
+    export ACPP_TARGETS="hip:gfx90a"
+
+    cmake .. \
+        -D BACKEND=SYCL \
+        -D CMAKE_CXX_COMPILER=/opt/adaptivecpp/bin/acpp \
+        -D CMAKE_BUILD_TYPE=Release
+
+    make -j$(nproc)
+
+---
+
+### 🎯 RAJA
+
+A performance portability library developed at LLNL.
+Requires additional dependencies: **Camp** and **Umpire**.
+
+#### Option A: NVIDIA GPUs
+
+    cmake .. \
+        -D BACKEND=RAJA \
+        -D RAJA_PLATFORM=CUDA \
+        -D CMAKE_CUDA_ARCHITECTURES=89 \
+        -D CMAKE_BUILD_TYPE=Release \
+        -D camp_DIR=/opt/camp/lib/cmake/camp \
+        -D umpire_DIR=/opt/umpire/lib/cmake/umpire \
+        -D RAJA_DIR=/opt/raja/lib/cmake/raja \
+        -D CMAKE_CUDA_HOST_COMPILER=/usr/bin/c++
+
+    make -j$(nproc)
+
+#### Option B: AMD GPUs
+
+    cmake .. \
+        -D BACKEND=RAJA \
+        -D RAJA_PLATFORM=HIP \
+        -D CMAKE_CXX_COMPILER=hipcc \
+        -D CMAKE_HIP_ARCHITECTURES="native" \
+        -D CMAKE_BUILD_TYPE=Release \
+        -D camp_DIR=/opt/camp/lib/cmake/camp \
+        -D umpire_DIR=/opt/umpire/lib/cmake/umpire \
+        -D RAJA_DIR=/opt/raja/lib/cmake/raja
+
+    make -j$(nproc)
+
+---
+
+## 🚀 Running the Application
+
+The executable name depends on the selected backend
+(e.g., `fletcher_CUDA`, `fletcher_HIP`, `fletcher_SYCL`).
+
+### Syntax
+
+    ./<executable> <TYPE> <NX> <NY> <NZ> <BORDER> <DX> <DY> <DZ> <DT> <TOTAL_TIME>
+
+### Example
+
+    ./fletcher_SYCL TTI 244 244 244 16 12.5 12.5 12.5 0.001 0.5
+
+---
+
+## Parameter Glossary
+
+- **TTI**: Physical medium type (Tilted Transverse Isotropy)
+- **244 244 244**: Computational domain dimensions (X, Y, Z)
+- **16**: Absorbing boundary size (border / halo / ghost cells)
+- **12.5 12.5 12.5**: Grid spacing (dx, dy, dz) in meters
+- **0.001**: Time step (`dt`) in seconds
+- **0.5**: Total simulated time in seconds
+
+---
+
+## 🛠️ Common Troubleshooting
+
+### CMake Cache Errors
+
+If you switch backends (e.g., CUDA → HIP), always delete the build directory:
+
+    rm -rf build
+
+CMake does not handle major compiler changes well within the same cache.
+
+---
+
+### Architecture Mismatch (Kernel Image Errors)
+
+If compilation succeeds but execution fails with a *kernel image* error:
+
+- Ensure the architecture flag (e.g., `89`, `gfx90a`) exactly matches the GPU
+- Use:
+  - `nvidia-smi` for NVIDIA GPUs
+  - `rocminfo` for AMD GPUs
+
+---
+
+### RAJA / Kokkos Path Issues
+
+Make sure paths such as `/opt/raja`, `/opt/camp`, and `/opt/umpire` match the actual installation locations on your system or Singularity container.
+
+---
