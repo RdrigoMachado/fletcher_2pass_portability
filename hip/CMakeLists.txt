@@ -18,5 +18,5 @@ target_include_directories(hip_backend
 # --offload-arch=native: Tenta detectar a GPU do sistema (ou defina explicitamente no CMake raiz)
 target_compile_options(hip_backend
     PRIVATE
-    -O3 -ffast-math
+    -O3
 )

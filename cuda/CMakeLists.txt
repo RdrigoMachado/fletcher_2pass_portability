@@ -27,5 +27,5 @@ target_include_directories(cuda_backend
 
 # Otimizações (Opcional, mas recomendado)
 if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
-    target_compile_options(cuda_backend PRIVATE -O3 --use_fast_math)
+    target_compile_options(cuda_backend PRIVATE -O3)
 endif()

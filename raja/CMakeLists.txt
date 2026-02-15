@@ -6,7 +6,7 @@ add_library(raja_backend STATIC
 if(RAJA_PLATFORM STREQUAL "CUDA")
     set_source_files_properties(raja_driver.cpp PROPERTIES LANGUAGE CUDA)
     # Habilita lambdas estendidos para NVIDIA
-    target_compile_options(raja_backend PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>)
+    target_compile_options(raja_backend PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda -O3>)
 
 elseif(RAJA_PLATFORM STREQUAL "HIP")
     set_source_files_properties(raja_driver.cpp PROPERTIES LANGUAGE HIP)
