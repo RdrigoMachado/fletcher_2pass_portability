@@ -5,7 +5,7 @@
 
 #define MEGA 1.0e-6
 #define GIGA 1.0e-9
-#define WRITE_DATA 1  // Set to 1 to enable file writing
+#define WRITE_DATA 0 // Set to 1 to enable file writing
 
 uint64_t get_timestamp_ns() {
     struct timespec ts;

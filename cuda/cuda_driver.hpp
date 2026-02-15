@@ -71,7 +71,7 @@ class CudaDriver : public Driver {
 
     private:
         int sx, sy, sz;
-        int dx, dy, dz, dt;
+        float dx, dy, dz, dt;
         int nx, ny, nz;
         int bord, absorb;
         host_data_container   host_data;

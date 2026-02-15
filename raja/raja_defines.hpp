@@ -35,8 +35,10 @@
 
     using POLITICA_XY = RAJA::KernelPolicy<
         RAJA::statement::HipKernel<
-        RAJA::statement::Tile<1, RAJA::tile_fixed<BSIZE_Y>, RAJA::hip_thread_y_loop,
-            RAJA::statement::Tile<0, RAJA::tile_fixed<BSIZE_X>, RAJA::hip_thread_x_loop,
+            // CORREÇÃO: Use hip_block_y_loop e hip_block_x_loop aqui!
+            RAJA::statement::Tile<1, RAJA::tile_fixed<BSIZE_Y>, RAJA::hip_block_y_loop,
+                RAJA::statement::Tile<0, RAJA::tile_fixed<BSIZE_X>, RAJA::hip_block_x_loop,
+                    // O loop interno continua mapeado para threads
                     RAJA::statement::For<1, RAJA::hip_thread_y_loop,
                         RAJA::statement::For<0, RAJA::hip_thread_x_loop,
                             RAJA::statement::Lambda<0>
@@ -47,9 +49,11 @@
         >
     >;
     using POLITICA_1D = RAJA::hip_exec<64>;
-    #define GPU_SYNC() hipDeviceSynchronize()
-    static constexpr const char* policy_name = "HIP";
 
+    // Mantivemos a checagem de erro que sugeri antes
+    #define GPU_SYNC() { hipError_t err = hipDeviceSynchronize(); if (err != hipSuccess) { printf("Erro Sync: %s\n", hipGetErrorString(err)); std::abort(); } }
+
+    static constexpr const char* policy_name = "HIP";
 #else
 
   using policy = RAJA::seq_exec;
