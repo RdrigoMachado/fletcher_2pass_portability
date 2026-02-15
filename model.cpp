@@ -1,8 +1,11 @@
 #include "model.hpp"
 #include <cstdio>
+#include <vector>
+#include <string>
+
 #define MEGA 1.0e-6
 #define GIGA 1.0e-9
-#define WRITE_DATA 0
+#define WRITE_DATA 1  // Set to 1 to enable file writing
 
 uint64_t get_timestamp_ns() {
     struct timespec ts;
@@ -10,19 +13,11 @@ uint64_t get_timestamp_ns() {
     return ((uint64_t)ts.tv_sec * 1000000000) + ts.tv_nsec;
 }
 
-void ReportProblemSizeCSV(const int sx, const int sy, const int sz,
-			  const int bord, const int st,
-			  FILE *f){
-  fprintf(f,
-	  "sx; %d; sy; %d; sz; %d; bord; %d;  st; %d; \n",
-	  sx, sy, sz, bord, st);
-}
-
-void ReportMetricsCSV(double walltime, double MSamples,
-		      long HWM, char *HWMUnit, FILE *f){
-  fprintf(f,
-	  "walltime; %lf; GSamples; %lf; HWM;  %ld; HWMUnit;  %s;\n",
-	  walltime, MSamples, HWM, HWMUnit);
+// Simple timer helper
+double wtime() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec + ts.tv_nsec * 1e-9;
 }
 
 void Model(const int st, const int iSource, const float dtOutput,
@@ -34,88 +29,121 @@ void Model(const int st, const int iSource, const float dtOutput,
     SlicePtr sPtr,
     int argc, char **argv)
 {
-    float tSim=0.0;
-    int   nOut=1;
-    float tOut=nOut*dtOutput;
+    float tSim = 0.0;
+    int   nOut = 1;
+    float tOut = nOut * dtOutput;
 
-    const long samplesPropagate=(long)(sx-2*bord)*(long)(sy-2*bord)*(long)(sz-2*bord);
-    const long totalSamples=samplesPropagate*(long)st;
+    // --- Metrics Variables ---
+    double t_initialize = 0.0;
+    double t_finalize   = 0.0;
+    double t_propagate  = 0.0;
+    double t_insert     = 0.0;
+    double t_updateHost = 0.0;
+    double t_loop_total = 0.0; // Measures the total walltime of the main loop
 
-    double walltime=0.0;
-    uint64_t stamp1 = get_timestamp_ns();
-
+    // --- Driver Creation ---
     std::unique_ptr<Driver> driver = createDriver(argc, argv);
+
+    // --- Initialization Phase ---
     printf("Initializing driver...\n");
+    double t0 = wtime();
     driver->initialize(sx, sy, sz, dx, dy, dz, dt, nx, ny, nz, bord, absorb);
+    t_initialize = wtime() - t0;
 
-    for (int it=1; it<=st; it++) {
+    // --- Simulation Loop ---
+    double loop_start = wtime();
 
-        // Calculate / obtain source value on i timestep
-        float src_value = Source(dt, it-1);
+    for (int it = 1; it <= st; it++) {
+
+        // 1. Insert Source
+        t0 = wtime();
+        float src_value = Source(dt, it - 1);
         driver->insertSource(iSource, src_value);
+        t_insert += (wtime() - t0);
 
-        const double t0=wtime();
-        printf("propagate\n");
+        // 2. Propagate
+        t0 = wtime();
+        // printf("propagate\n"); // Commented out to avoid I/O noise in timing
         driver->propagate();
-        walltime+=wtime()-t0;
+        t_propagate += (wtime() - t0);
 
-        tSim=it*dt;
+        tSim = it * dt;
+
+        // 3. Output / Update Host
         if (tSim >= tOut) {
-            if(WRITE_DATA){
-                printf("update host\n");
-                driver->updateHost();
-                DumpSliceFile_Nofor(sx,sy,sz,driver->getData(), sPtr);
+
+            // Always update host when output time is reached (as requested)
+            t0 = wtime();
+            // printf("update host\n");
+            driver->updateHost();
+            t_updateHost += (wtime() - t0);
+
+            // Only dump to file if enabled
+            if (WRITE_DATA) {
+                DumpSliceFile_Nofor(sx, sy, sz, driver->getData(), sPtr);
             }
-            tOut=(++nOut)*dtOutput;
+
+            tOut = (++nOut) * dtOutput;
         }
-  }
-
-  // close binary output file before measuring time to include total io time
-  uint64_t stamp2 = get_timestamp_ns();
-
-  // // get HWM data
-  const char StringHWM[6]="VmHWM";
-  char line[256], HWMUnit[8];
-  long HWM;
-  const double MSamples=(GIGA*(double)totalSamples)/walltime;
-
-  FILE *fp=fopen("/proc/self/status","r");
-  while (fgets(line, 256, fp) != NULL){
-    if (strncmp(line, StringHWM, 5) == 0) {
-      sscanf(line+6,"%ld %s", &HWM, HWMUnit);
-      break;
     }
-  }
-  fclose(fp);
 
-  // Dump Execution Metrics
-  double execution_time = ((double)(stamp2-stamp1))*1e-9;
+    t_loop_total = wtime() - loop_start;
 
-  // printf("Total dump time (s): %f\n", tdt);
-  printf ("Execution time (s) is %lf\n", walltime);
-  printf ("Total execution time (s) is %lf\n", execution_time);
-  printf ("GSamples/s %.0lf\n", MSamples);
-  printf ("Memory High Water Mark is %ld %s\n",HWM, HWMUnit);
+    // --- Memory Metrics (High Water Mark) ---
+    const char StringHWM[6] = "VmHWM";
+    char line[256], HWMUnit[8];
+    long HWM = 0;
 
-  printf("%s,%d,%d,%d,%d,%.2f,%.2f,%.2f,%f,%f,%lu,%lu,%lf,%lf,%.2f\n",
-          BACKEND, sx - 2*bord - 2*absorb, sy - 2*bord - 2*absorb, sz - 2*bord - 2*absorb, absorb, dx, dy, dz, dt, st*dt,
-          stamp1, stamp2, walltime, execution_time, MSamples);
+    FILE *fp = fopen("/proc/self/status", "r");
+    if (fp) {
+        while (fgets(line, 256, fp) != NULL) {
+            if (strncmp(line, StringHWM, 5) == 0) {
+                sscanf(line + 6, "%ld %s", &HWM, HWMUnit);
+                break;
+            }
+        }
+        fclose(fp);
+    }
 
-  // Dump Execution Metrics in CSV
-  FILE *fr=NULL;
-  const char fName[]="Report.csv";
-  fr=fopen(fName,"w");
+    // --- Finalize Phase ---
+    t0 = wtime();
+    driver->finalize();
+    t_finalize = wtime() - t0;
 
-  // report problem size
-  ReportProblemSizeCSV(sx, sy, sz,
-		       bord, st,
-		       fr);
+    // --- Console Report ---
+    const long samplesPropagate = (long)(sx - 2 * bord) * (long)(sy - 2 * bord) * (long)(sz - 2 * bord);
+    const long totalSamples = samplesPropagate * (long)st;
+    const double GSamples = (GIGA * (double)totalSamples) / t_propagate; // GSamples based on pure propagation time usually
 
-  // report collected metrics
-  ReportMetricsCSV(walltime, MSamples,
-		   HWM, HWMUnit, fr);
+    // printf("==========================================\n");
+    // printf("Backend: %s\n", BACKEND);
+    // printf("Grid: %d x %d x %d (Steps: %d)\n", sx, sy, sz, st);
+    // printf("------------------------------------------\n");
+    // printf("Initialization : %.6f s\n", t_initialize);
+    // printf("Insert Source  : %.6f s\n", t_insert);
+    // printf("Propagate      : %.6f s\n", t_propagate);
+    // printf("Update Host    : %.6f s\n", t_updateHost);
+    // printf("Finalize       : %.6f s\n", t_finalize);
+    // printf("------------------------------------------\n");
+    // printf("Total Loop Time: %.6f s\n", t_loop_total);
+    // printf("GSamples/s     : %.2f\n", MSamples);
+    // printf("Memory HWM     : %ld %s\n", HWM, HWMUnit);
+    // printf("==========================================\n");
 
-  fclose(fr);
-  fflush(stdout);
-  driver->finalize();
+    // --- CSV Output (Requested Format) ---
+    // Format: version,sx,sy,sz,dt,st,walltime,propagate,insertsource,updatehost,initialize,finalize,gsamples
+    printf("%s,%d,%d,%d,%f,%d,%f,%f,%f,%f,%f,%f,%.2f\n",
+           BACKEND,
+           sx, sy, sz,
+           dt, st,
+           t_loop_total,
+           t_propagate,
+           t_insert,
+           t_updateHost,
+           t_initialize,
+           t_finalize,
+           GSamples
+    );
+
+    fflush(stdout);
 }

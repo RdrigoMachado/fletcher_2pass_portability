@@ -1,1 +1,1 @@
-double wtime();
+// double wtime();

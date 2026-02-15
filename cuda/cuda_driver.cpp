@@ -288,8 +288,6 @@ void CudaDriver::propagate()
         device_data.pp,  device_data.pc,
         device_data.qp,  device_data.qc);
 
-    cudaDeviceSynchronize();
-
     kernel_wave_propagate<<<numBlocks, threadsPerBlock>>>(
         bord,    dt,
         sx,      sy,      sz,
@@ -317,6 +315,8 @@ void CudaDriver::updateHost(){
     size_t total_elements = (size_t)sx * sy * sz;
     size_t msize_vol_bytes = total_elements * sizeof(float);
     cudaMemcpy(host_data.pc, device_data.pc, msize_vol_bytes, cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+
 }
 
 float* CudaDriver::getData(){
@@ -364,6 +364,7 @@ void CudaDriver::finalize(){
     cudaFreeHost(host_data.v2pz);
     cudaFreeHost(host_data.v2sz);
     cudaFreeHost(host_data.v2pn);
+    cudaDeviceSynchronize();
 }
 
 std::unique_ptr<Driver> createDriver(int argc, char** argv) {

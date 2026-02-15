@@ -112,8 +112,7 @@ An open standard. The main difference lies in the `ACPP_TARGETS` environment var
 
 #### Option B: AMD GPUs
 
-    export ACPP_TARGETS="hip:gfx90a"
-
+    export ACPP_TARGETS="hip:gfx1100"
     cmake .. \
         -D BACKEND=SYCL \
         -D CMAKE_CXX_COMPILER=/opt/adaptivecpp/bin/acpp \

@@ -338,6 +338,7 @@ void SYCLDriver::finalize(){
     sycl::free(host_data.v2pz,    q);
     sycl::free(host_data.v2sz,    q);
     sycl::free(host_data.v2pn,    q);
+    q.wait();
 }
 
 std::unique_ptr<Driver> createDriver(int argc, char** argv) {

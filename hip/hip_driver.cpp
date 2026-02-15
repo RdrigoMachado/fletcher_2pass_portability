@@ -2,9 +2,6 @@
 #include <cstdio>
 #include <algorithm>
 
-#define BSIZE_X 16
-#define BSIZE_Y 16
-
 HipDriver::HipDriver(int argc, char** argv) : padding_offset_bytes(0) {}
 
 void HipDriver::initialize(
@@ -331,6 +328,7 @@ void HipDriver::updateHost(){
     size_t total_elements = (size_t)sx * sy * sz;
     size_t msize_vol_bytes = total_elements * sizeof(float);
     hipMemcpy(host_data.pc, device_data.pc, msize_vol_bytes, hipMemcpyDeviceToHost);
+    hipDeviceSynchronize();
 }
 
 float* HipDriver::getData(){
@@ -380,6 +378,7 @@ void HipDriver::finalize(){
     hipHostFree(host_data.v2pz);
     hipHostFree(host_data.v2sz);
     hipHostFree(host_data.v2pn);
+    hipDeviceSynchronize();
 }
 
 std::unique_ptr<Driver> createDriver(int argc, char** argv) {

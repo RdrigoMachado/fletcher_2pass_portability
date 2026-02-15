@@ -138,12 +138,14 @@ void RajaDriver::initialize(
     rm.memset(device_data.pc,  0, msize_vol_bytes);
     rm.memset(device_data.qp,  0, msize_vol_bytes);
     rm.memset(device_data.qc,  0, msize_vol_bytes);
+    GPU_SYNC();
+
 }
 
 void RajaDriver::insertSource(int index, float value)
 {
     auto local_ptr_dev = this->device_data;
-    RAJA::forall<policy>(RAJA::RangeSegment(0, 1), [=]RAJA_HOST_DEVICE(int i){
+    RAJA::forall<POLITICA_1D>(RAJA::RangeSegment(0, 1), [=]RAJA_HOST_DEVICE(int i){
         local_ptr_dev.pc[index] += value;
         local_ptr_dev.qc[index] += value;
     });
@@ -317,6 +319,8 @@ void RajaDriver::finalize(){
         device_allocator.deallocate(device_data.pc);
         device_allocator.deallocate(device_data.qp);
         device_allocator.deallocate(device_data.qc);
+        GPU_SYNC();
+
 }
 
 std::unique_ptr<Driver> createDriver(int argc, char** argv) {

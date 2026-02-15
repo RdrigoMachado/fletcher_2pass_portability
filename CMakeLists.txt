@@ -70,14 +70,43 @@ elseif(BACKEND STREQUAL "SYCL")
     target_compile_definitions(fletcher_${BACKEND} PRIVATE USE_SYCL)
 
 elseif(BACKEND STREQUAL "RAJA")
-    # 1. Habilita CUDA (necessário para RAJA na GPU)
-    enable_language(CUDA)
-
-    if(NOT CMAKE_CUDA_ARCHITECTURES)
-        set(CMAKE_CUDA_ARCHITECTURES 89)
+    # 1. Define padrão se não for passado
+    if(NOT DEFINED RAJA_PLATFORM)
+        set(RAJA_PLATFORM "CUDA")
     endif()
 
-    # 2. Definições de caminhos (Se não forem passados via linha de comando)
+    # 2. Ativação Condicional de Linguagem
+    if(RAJA_PLATFORM STREQUAL "CUDA")
+        # --- Configuração NVIDIA ---
+
+        # Correção BLT (Host Compiler) para NVIDIA
+        if(NOT CMAKE_CUDA_HOST_COMPILER)
+            set(CMAKE_CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
+        endif()
+
+        enable_language(CUDA)
+
+        if(NOT CMAKE_CUDA_ARCHITECTURES)
+            set(CMAKE_CUDA_ARCHITECTURES 89)
+        endif()
+
+        add_compile_definitions(RAJA_ENABLE_CUDA)
+
+    elseif(RAJA_PLATFORM STREQUAL "HIP")
+        # --- Configuração AMD ---
+        enable_language(HIP)
+
+        # Define arquitetura se não passada (native = detecta a placa atual)
+        if(NOT CMAKE_HIP_ARCHITECTURES)
+            set(CMAKE_HIP_ARCHITECTURES "native")
+        endif()
+
+        add_compile_definitions(RAJA_ENABLE_HIP)
+    else()
+        message(FATAL_ERROR "RAJA_PLATFORM must be CUDA or HIP")
+    endif()
+
+    # 3. Encontrar Dependências (Camp, Umpire, RAJA)
     # Tenta usar variáveis de ambiente se as do CMake estiverem vazias
     if(NOT DEFINED RAJA_DIR)
         set(RAJA_DIR $ENV{RAJA_ROOT}/lib/cmake/raja)
@@ -89,27 +118,27 @@ elseif(BACKEND STREQUAL "RAJA")
         set(umpire_DIR $ENV{UMPIRE_ROOT}/lib/cmake/umpire)
     endif()
 
-    # 3. Encontra dependências na ordem correta
-    find_package(camp REQUIRED)   # RAJA depende do camp
-    find_package(umpire REQUIRED) # RAJA depende do umpire (conforme seu singularity)
+    find_package(camp REQUIRED)
+    find_package(umpire REQUIRED)
     find_package(RAJA REQUIRED)
 
-    # 4. Adiciona subdiretório e definições
+    # 4. Adiciona Subdiretório
     add_subdirectory(raja)
     target_compile_definitions(fletcher_${BACKEND} PRIVATE USE_RAJA)
 
-    # 5. Linkagem (Agora segura)
-    # Verifica se o target RAJA::RAJA existe. Se não, tenta apenas RAJA.
+    # 5. Linkagem Segura
     if(TARGET RAJA::RAJA)
         target_link_libraries(fletcher_${BACKEND} PRIVATE raja_backend RAJA::RAJA)
     elseif(TARGET RAJA)
         target_link_libraries(fletcher_${BACKEND} PRIVATE raja_backend RAJA)
-    else()
-        message(FATAL_ERROR "RAJA found but target RAJA::RAJA or RAJA not found!")
     endif()
 
-    # Linka Umpire e Camp explicitamente se necessário (segurança)
+    # Linka dependências explicitas e runtime do HIP se necessário
     target_link_libraries(fletcher_${BACKEND} PRIVATE umpire camp)
+
+    if(RAJA_PLATFORM STREQUAL "HIP")
+        target_link_libraries(fletcher_${BACKEND} PRIVATE hip::host)
+    endif()
 
     target_include_directories(fletcher_${BACKEND} PRIVATE raja)
 
@@ -129,7 +158,6 @@ elseif(BACKEND STREQUAL "HIP")
     target_link_libraries(fletcher_${BACKEND}
         PRIVATE
             hip_backend
-            hip::host
     )
 
     target_include_directories(fletcher_${BACKEND} PRIVATE hip)

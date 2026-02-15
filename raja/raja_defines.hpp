@@ -24,9 +24,9 @@
             >
         >
     >;
-
-  #define GPU_SYNC() cudaDeviceSynchronize()
-  static constexpr const char* policy_name = "CUDA";
+    using POLITICA_1D = RAJA::cuda_exec<64>;
+    #define GPU_SYNC() cudaDeviceSynchronize()
+    static constexpr const char* policy_name = "CUDA";
 
 #elif defined(RAJA_ENABLE_HIP)
 
@@ -34,9 +34,9 @@
     using policy = RAJA::hip_exec<256>;
 
     using POLITICA_XY = RAJA::KernelPolicy<
+        RAJA::statement::HipKernel<
         RAJA::statement::Tile<1, RAJA::tile_fixed<BSIZE_Y>, RAJA::hip_thread_y_loop,
             RAJA::statement::Tile<0, RAJA::tile_fixed<BSIZE_X>, RAJA::hip_thread_x_loop,
-                RAJA::statement::HipKernel<
                     RAJA::statement::For<1, RAJA::hip_thread_y_loop,
                         RAJA::statement::For<0, RAJA::hip_thread_x_loop,
                             RAJA::statement::Lambda<0>
@@ -46,9 +46,9 @@
             >
         >
     >;
-
-  #define GPU_SYNC() hipDeviceSynchronize()
-  static constexpr const char* policy_name = "HIP";
+    using POLITICA_1D = RAJA::hip_exec<64>;
+    #define GPU_SYNC() hipDeviceSynchronize()
+    static constexpr const char* policy_name = "HIP";
 
 #else
 
